@@ -1,28 +1,41 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from db.database import SessionLocal
+from app.db.dependencies import get_db
 from app.schemas.auth import RegisterRequest, RegisterResponse
 from app.services.auth_service import register_user
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+router = APIRouter(
+    prefix="/api/v1/auth",
+    tags=["Authentication"],
+)
 
 
-def get_db():
-    db = SessionLocal()
+@router.post(
+    "/register",
+    response_model=RegisterResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register(
+    request: RegisterRequest,
+    db: Session = Depends(get_db),
+):
     try:
-        yield db
-    finally:
-        db.close()
+        user = register_user(db, request)
 
+        return RegisterResponse(
+            id=user.id,
+            email=user.email,
+            display_name=user.display_name,
+            is_active=user.is_active,
+            is_verified=user.is_verified,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+        )
 
-@router.post("/register", response_model=RegisterResponse, status_code=201)
-def register(request: RegisterRequest, db: Session = Depends(get_db)):
-    try:
-        return register_user(db, request)
-    except HTTPException:
-        # Re-raise FastAPI HTTPExceptions
-        raise
-    except Exception as exc:
-        # Generic error -> 500
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
